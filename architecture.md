@@ -67,7 +67,13 @@ Rationale: Supabase covers Postgres + Auth + Storage under one project, so v1 on
 
 ## 3. Data Model → Schema
 
-Directly implements specs.md §4. Prisma schema sketch:
+Directly implements specs.md §4. Implemented with **Prisma 7**, which moved connection config out of `schema.prisma`:
+
+- `prisma/schema.prisma` — models only, `datasource db { provider = "postgresql" }` with no `url`/`directUrl` (no longer valid there in Prisma 7).
+- `prisma.config.ts` — loads `.env.local` and sets `datasource.url` to `DIRECT_URL` (non-pooled), used by `prisma migrate`/`generate`.
+- `lib/prisma.ts` — runtime `PrismaClient`, constructed with `@prisma/adapter-pg` (`PrismaPg`) pointed at the pooled `DATABASE_URL`, since Prisma 7 requires a driver adapter rather than reading `datasource.url` at runtime.
+
+Schema:
 
 ```prisma
 model User {

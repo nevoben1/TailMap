@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String     @id // matches Supabase auth.users.id
+  name          String
+  email         String     @unique
+  avatarInitial String
+  createdAt     DateTime   @default(now())
+  dogs          Dog[]
+  favorites     Favorite[]
+  settings      Settings?
+}
+
+model Dog {
+  id          String    @id @default(cuid())
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id])
+  name        String
+  photoUrl    String?
+  size        String
+  breed       String
+  color       String
+  age         String
+  energy      String
+  gender      String
+  preferences Json // { "Breed:Golden Retriever": "love", "Color:Black": "dislike", ... }
+  checkIns    CheckIn[]
+  createdAt   DateTime  @default(now())
+
+  @@index([ownerId])
+}
+
+model Park {
+  id              String     @id @default(cuid())
+  externalPlaceId String?    @unique
+  name            String
+  photoRef        String?
+  lat             Float
+  lng             Float
+  address         String?
+  source          String // "external_api" | "seeded"
+  cachedAt        DateTime   @default(now())
+  checkIns        CheckIn[]
+  favorites       Favorite[]
+}
+
+model CheckIn {
+  id        String    @id @default(cuid())
+  dogId     String
+  dog       Dog       @relation(fields: [dogId], references: [id])
+  parkId    String
+  park      Park      @relation(fields: [parkId], references: [id])
+  startedAt DateTime  @default(now())
+  expiresAt DateTime
+  endedAt   DateTime? // set when user manually ends session
+
+  @@index([parkId])
+  @@index([dogId])
+}
+
+model Favorite {
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  parkId String
+  park   Park   @relation(fields: [parkId], references: [id])
+
+  @@id([userId, parkId])
+}
+
+model Settings {
+  userId             String @id
+  user               User   @relation(fields: [userId], references: [id])
+  discoveryRadius    Int    @default(3) // miles
+  distanceUnit       String @default("mi")
+  checkInExpiryHours Int    @default(3) // per specs.md §6, app-level default, editable here
+}
