@@ -23,6 +23,7 @@ export default async function MapPage() {
 
   return (
     <MapClient
+      meId={supabaseUser.id}
       dogs={dogs.map((d) => ({
         id: d.id,
         name: d.name,

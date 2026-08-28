@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 
+import { startConversationAction } from "@/lib/actions/chat";
 import { springSoft } from "@/lib/motion";
 
 import { FavoriteHeart, GradePill } from "./park-bits";
@@ -22,6 +23,7 @@ function useIsNarrow() {
 
 export function ParkDetail({
   park,
+  me,
   distanceUnit,
   checkingIn,
   reduce,
@@ -31,6 +33,7 @@ export function ParkDetail({
   onClose,
 }: {
   park: GradedPark;
+  me: string;
   distanceUnit: "mi" | "km";
   checkingIn: boolean;
   reduce: boolean;
@@ -161,6 +164,14 @@ export function ParkDetail({
                     />
                     {dog.reason}
                   </div>
+                  {dog.ownerId && dog.ownerId !== me && (
+                    <form action={startConversationAction}>
+                      <input type="hidden" name="to" value={dog.ownerId} />
+                      <button type="submit" className="chat-msg-owner">
+                        Message owner
+                      </button>
+                    </form>
+                  )}
                 </div>
               ))}
             </div>

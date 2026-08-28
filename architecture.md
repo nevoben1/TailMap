@@ -203,12 +203,16 @@ app/
   dogs/page.tsx                # dog list + selected dog editor
   session/page.tsx             # active session screen
   settings/page.tsx
+  chat/page.tsx                # inbox — conversation list (v1.2, specs §15)
+  chat/[conversationId]/page.tsx  # thread (v1.2)
   api/
     places/nearby/route.ts
     places/photo/[ref]/route.ts
 lib/
   grading.ts                   # scoring function, shared server-side
   places.ts                    # Places API client + cache upsert logic
+  realtime.ts                  # browser: chat channel + presence helpers (v1.2)
+  email.ts                     # Resend wrapper + templates (v1.2)
   supabase/
     server.ts                  # server-side Supabase client
     client.ts                  # browser Supabase client
@@ -217,6 +221,8 @@ lib/
     checkins.ts                # server actions: checkIn, endSession
     favorites.ts
     settings.ts
+    chat.ts                    # server actions: startConversation, sendMessage,
+                               #   markRead, blockUser, unblockUser (v1.2)
 prisma/
   schema.prisma
   migrations/
@@ -248,6 +254,8 @@ middleware.ts
 2. Whether to add Vercel Cron cleanup for expired check-ins now or defer until table size becomes a concern (leaning defer, per §5).
 3. Rate-limiting/abuse protection on the Places proxy route (e.g. per-user throttling) — not addressed yet, worth a pass before public launch.
 4. UI Motion refresh (§12): resolved. Route transitions use `app/(app)/template.tsx` (Phase 1). The floating Map panel is a fixed glass card above 700px and a two-detent, button-toggled (non-draggable) bottom sheet below it (Phase 3, specs §13.5).
+5. Chat (§14, specs §15): email nudge has no "quiet period" grace — it fires within seconds of the first unread message to an away recipient (throttled to ≤1 per conversation per 10 min). A true digest ("wait N min of silence, then summarize") would need a scheduler (Vercel Cron or Supabase `pg_cron`); deferred, no schema change beyond `lastChatEmailAt` when added.
+6. Chat: RLS is introduced on the three chat tables only. Whether to later extend RLS to the rest of the schema (defence in depth) is open — not needed while all non-chat DB access is server-side via the service role.
 
 ## 12. Frontend Motion Architecture (specs.md §13)
 
@@ -405,3 +413,197 @@ app/(app)/map/
 - Null `photoRef` or an image `error` event → a CSS gradient block with the
   park's initial. The proxy's 60 req/min per-user limit comfortably covers a
   ~20-card grid load.
+
+## 14. Chat (specs.md §15)
+
+1:1 direct messaging. Live delivery via Supabase Realtime; email nudges sent
+inline from the send action with no scheduler. The first feature in the
+project to use Postgres Row Level Security.
+
+### 14.1 Schema additions
+
+Extends the models in §3. All `cuid()` ids unless noted.
+
+```prisma
+model Conversation {
+  id            String   @id @default(cuid())
+  pairKey       String   @unique          // sorted "userA:userB"
+  createdAt     DateTime @default(now())
+  lastMessageAt DateTime @default(now())  // denormalized for inbox sort
+  participants  ConversationParticipant[]
+  messages      Message[]
+
+  @@index([lastMessageAt])
+}
+
+model ConversationParticipant {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  lastReadAt     DateTime     @default(now())
+  lastChatEmailAt DateTime?
+
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  body           String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Block {
+  blockerId String
+  blocker   User     @relation("BlocksMade", fields: [blockerId], references: [id])
+  blockedId String
+  blocked   User     @relation("BlocksReceived", fields: [blockedId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+```
+
+- `User` gains the back-relations (`conversations`, `messagesSent`,
+  `blocksMade`, `blocksReceived`) and `Settings` gains
+  `notifyEmail Boolean @default(true)`.
+- Exactly two `ConversationParticipant` rows per conversation in v1.2. The
+  table (rather than two userId columns on `Conversation`) is kept so per-side
+  `lastReadAt` / `lastChatEmailAt` have a home and group chat is a smaller
+  later step.
+- No `active`/`unread` columns — unread is derived per read:
+  `Message.createdAt > participant.lastReadAt AND senderId != userId`.
+
+### 14.2 Row Level Security
+
+Realtime **Postgres Changes** streams table rows to the browser and filters
+them through RLS using the user's Supabase JWT (`auth.uid()`). So the three
+chat tables get RLS; nothing else in the schema does.
+
+Migration (hand-written SQL alongside the Prisma migration):
+
+```sql
+alter table "Conversation"            enable row level security;
+alter table "ConversationParticipant" enable row level security;
+alter table "Message"                 enable row level security;
+
+-- membership helper predicate, inlined into each policy:
+--   exists (select 1 from "ConversationParticipant" p
+--           where p."conversationId" = <row>.id/​conversationId
+--             and p."userId" = auth.uid())
+
+create policy "read own participant rows" on "ConversationParticipant"
+  for select using ("userId" = auth.uid());
+
+create policy "read joined conversations" on "Conversation"
+  for select using (exists (
+    select 1 from "ConversationParticipant" p
+    where p."conversationId" = "Conversation".id and p."userId" = auth.uid()));
+
+create policy "read messages in joined conversations" on "Message"
+  for select using (exists (
+    select 1 from "ConversationParticipant" p
+    where p."conversationId" = "Message"."conversationId"
+      and p."userId" = auth.uid()));
+
+alter publication supabase_realtime add table "Message";
+-- (add "Conversation"/"ConversationParticipant" too if the inbox subscribes
+--  to them directly rather than to an app-level broadcast channel)
+```
+
+- **SELECT only.** No INSERT/UPDATE/DELETE policies — every write goes through
+  a server action using the Supabase **service role**, which has `BYPASSRLS`.
+  Server-side authorization is written the same way as the rest of the app
+  (check `userId` against the row), not delegated to Postgres.
+- Prisma's runtime client uses the pooled `DATABASE_URL` role. That role must
+  keep `BYPASSRLS` (Supabase's default `postgres`/service role does) or the
+  server actions themselves would be filtered. Verify after enabling RLS —
+  this is the main migration risk.
+- The RLS predicates are also what Realtime Authorization checks for the
+  channel subscription, so no separate `realtime.messages` policy is needed
+  with the Postgres Changes approach.
+
+### 14.3 Realtime wiring
+
+`lib/realtime.ts` (browser, uses `lib/supabase/client.ts` with the user JWT):
+
+- **Thread channel** — on `/chat/[id]`, subscribe to
+  `postgres_changes` INSERT on `Message` filtered `conversationId=eq.<id>`.
+  Append to local state; if scrolled to bottom, keep pinned; call `markRead`
+  (server action) on receive-while-focused and on mount.
+- **Inbox / badge channel** — one subscription per session to `Message`
+  inserts across the user's conversations (RLS already limits this to joined
+  conversations) or to `ConversationParticipant` updates for `userId`. Feeds
+  the nav unread badge and the inbox list ordering. The badge count itself is
+  seeded by a server component query on load, then adjusted by events.
+- **Presence** — the thread channel also tracks Presence keyed by `userId`.
+  Used only server-side-adjacent: `sendMessage` checks whether the recipient
+  is present before deciding to email (§14.4). Not rendered as "online" in
+  v1.2.
+
+Server actions in `lib/actions/chat.ts`:
+
+- `startConversation(otherUserId)` — reject self / blocked pair; compute
+  `pairKey`; `upsert` on `pairKey` creating two participant rows; return id.
+- `sendMessage(conversationId, body)` — assert caller is a participant and not
+  blocked; `trim` and reject empty; insert `Message`; bump
+  `Conversation.lastMessageAt`; `waitUntil(maybeEmail(recipient))`.
+- `markRead(conversationId)` — set caller's `lastReadAt = now()`.
+- `blockUser(userId)` / `unblockUser(userId)` — upsert/delete `Block`.
+
+### 14.4 Email nudge — `lib/email.ts`
+
+Inline, no cron (see specs §15.5 for the rule). `maybeEmail(recipientParticipant)`:
+
+```text
+if !recipient.settings.notifyEmail            -> return
+if presenceHasUser(conversationId, recipient) -> return   // client connected
+if lastChatEmailAt && lastChatEmailAt > lastReadAt -> return  // already nudged
+if lastChatEmailAt && now - lastChatEmailAt < 10*60_000 -> return  // cooldown
+send Resend email (sender name, snippet, /chat/<id> deep link)
+set recipient.lastChatEmailAt = now()
+```
+
+- Runs inside `after()` (`next/server`) from the server action so the sender's
+  response is not blocked and a Resend failure does not fail `sendMessage`
+  (logged only). `lastChatEmailAt` is stamped **only** when Resend returns ok —
+  a "not configured" (no `RESEND_API_KEY`/`EMAIL_FROM`) or failed send leaves
+  the recipient eligible for the next message.
+- Env: `RESEND_API_KEY`, `EMAIL_FROM`. Sending domain SPF/DKIM configured in
+  Resend + DNS. Added to the Vercel env var list in §9. Email is dormant (the
+  helper early-returns `{skipped:"not-configured"}`) until both are set, so the
+  chat feature ships before email is provisioned.
+- **"Recipient is active" check — resolved as `lastReadAt` freshness, not
+  Presence.** `maybeNudgeByEmail` skips the email when the recipient's
+  `lastReadAt` for the conversation is under 60s old. `thread.tsx` calls
+  `markRead` on mount and on every inbound message while mounted, so a
+  recipient actually sitting in the thread keeps `lastReadAt` fresh and never
+  gets emailed mid-conversation. No Realtime Presence, no `lastSeenAt` column,
+  no heartbeat — it reuses the read signal that already exists. Trade-off: a
+  recipient with the thread open but the tab backgrounded (Realtime paused)
+  can still be emailed, which is acceptable ("you're away").
+- Implemented in `lib/email.ts` (plain `fetch` to the Resend HTTP API, no SDK)
+  + `maybeNudgeByEmail` in `lib/actions/chat.ts`.
+
+### 14.5 What does not change
+
+- Middleware / auth flow (§7) — `/chat/**` is behind the same auth gate as
+  every other route; no new matcher logic beyond it not being `/login`.
+- No cron, no background worker — the §5 "no scheduled jobs" property holds.
+- RSC/client split — `/chat` and `/chat/[id]` pages are server components for
+  the initial load (auth + first page of data); the message list, composer,
+  and subscriptions are client components.
+- The Places pipeline, grading, check-in expiry — untouched.
+
+### 14.6 Env vars (extends §9)
+
+- `RESEND_API_KEY` (server-only)
+- `EMAIL_FROM` (e.g. `Tailmap <hi@mail.tailmap.app>`)

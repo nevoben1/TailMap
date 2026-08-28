@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "motion/react";
 
+import { startConversationAction } from "@/lib/actions/chat";
 import { fadeRise, reducedFade, springSoft, staggerContainer } from "@/lib/motion";
 import type { DogMatch } from "@/lib/grading";
 
@@ -9,11 +10,13 @@ export function SessionCard({
   parkName,
   checkedInLabel,
   alsoHere,
+  me,
   endSession,
 }: {
   parkName: string;
   checkedInLabel: string;
   alsoHere: DogMatch[];
+  me: string;
   endSession: (formData: FormData) => void | Promise<void>;
 }) {
   const reduce = !!useReducedMotion();
@@ -89,6 +92,14 @@ export function SessionCard({
               >
                 {match.reason}
               </div>
+              {match.ownerId && match.ownerId !== me && (
+                <form action={startConversationAction}>
+                  <input type="hidden" name="to" value={match.ownerId} />
+                  <button type="submit" className="chat-msg-owner">
+                    Message owner
+                  </button>
+                </form>
+              )}
             </motion.div>
           ))}
         </motion.div>

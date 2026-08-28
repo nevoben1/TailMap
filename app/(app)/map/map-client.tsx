@@ -93,10 +93,12 @@ function SkeletonList() {
 }
 
 export function MapClient({
+  meId,
   dogs,
   radiusMiles,
   distanceUnit,
 }: {
+  meId: string;
   dogs: DogSummary[];
   radiusMiles: number;
   distanceUnit: "mi" | "km";
@@ -532,6 +534,7 @@ export function MapClient({
           <ParkDetail
             key={selectedPark.id}
             park={selectedPark}
+            me={meId}
             distanceUnit={distanceUnit}
             checkingIn={checkingIn}
             reduce={reduce}
