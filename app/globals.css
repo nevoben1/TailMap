@@ -183,20 +183,142 @@
   }
 }
 
-/* — nav: sliding active-link underline (shared layout, specs §13.2). — */
+/* — nav: icon rail left, centered tail wordmark, settings menu + avatar right
+   (shared layout, specs §13.2). — */
+.nav {
+  justify-content: space-between;
+}
+.nav-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 0;
+  min-width: 0;
+}
+.nav-side--end {
+  justify-content: flex-end;
+}
+
+.nav-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.nav-icon-btn svg {
+  width: 20px;
+  height: 20px;
+}
+.nav-icon-btn:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.nav-link[aria-current="page"] .nav-icon-btn,
+.nav-link[aria-current="page"] {
+  color: var(--color-accent);
+}
+
+/* sliding active-link underline */
 .nav-link {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
   padding-bottom: 2px;
 }
 .nav-underline {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -5px;
+  left: 6px;
+  right: 6px;
+  bottom: -6px;
   height: 2px;
   border-radius: 999px;
   background: var(--color-accent);
+}
+
+/* centered tail wordmark */
+.nav-logo {
+  flex: 0 0 auto;
+  color: var(--color-text);
+}
+.nav-logo__mark {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 21px;
+  line-height: 1;
+  color: var(--color-text);
+}
+.nav-logo__i {
+  position: relative;
+  display: inline-block;
+}
+.nav-logo__pin {
+  position: absolute;
+  left: 50%;
+  top: -0.34em;
+  width: 0.7em;
+  height: 0.7em;
+  transform: translateX(-50%);
+  color: var(--color-accent);
+}
+
+/* settings dropdown */
+.nav-menu {
+  position: relative;
+}
+.nav-menu__pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  min-width: 150px;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+}
+.nav-menu__pop form {
+  display: contents;
+}
+.nav-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: none;
+  border-radius: calc(var(--radius-md) * 0.6);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.nav-menu__item:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  color: var(--color-accent);
+}
+
+.nav-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--color-accent-2-200);
+  color: var(--color-accent-2-800);
+  font-family: var(--font-heading);
+  font-size: 13px;
 }
 
 /* — dog rail: sliding highlight behind the selected dog (specs §13.2). — */
