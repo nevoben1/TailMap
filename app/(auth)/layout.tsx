@@ -1,3 +1,5 @@
+import { AuthCard } from "./auth-card";
+
 export default function AuthLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -71,7 +73,7 @@ export default function AuthLayout({
         className="flex-1 flex items-center justify-center"
         style={{ padding: 70, background: "var(--color-bg)" }}
       >
-        <div style={{ width: "100%", maxWidth: 360 }}>{children}</div>
+        <AuthCard>{children}</AuthCard>
       </div>
     </div>
   );

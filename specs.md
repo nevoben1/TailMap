@@ -142,9 +142,10 @@ Proposed stack (open to change):
 
 ## 11. Open Questions / Decisions Needed
 
-All prior open questions have been resolved (see §5–§10 for the locked-in decisions). One remaining item:
+All prior open questions have been resolved (see §5–§10 for the locked-in decisions). Remaining items:
 
 1. Exact grading scaling factor and reason-string generation logic (proposed defaults in §5) will need tuning against real data once check-in volume exists — not a blocker for implementation, just expect adjustment post-launch.
+2. UI Motion & Layout Refresh (§13): all three implementation open items are now resolved — see §13.5.
 
 ## 12. Verification Checklist (pre-launch)
 
@@ -171,3 +172,205 @@ Checked off = verified against a live Supabase/Places backend (test users, real 
 - [ ] Responsive layout verified on desktop and mobile browser widths.
 - [ ] Messaging and Notifications features are fully absent/deferred, not partially built.
 - [ ] Deployed and reachable on Vercel with managed Postgres connected.
+
+## 13. UI Motion & Layout Refresh (v1.1)
+
+A polish pass on top of the shipped v1. Adds motion, liveness, and a more
+modern floating layout to the Map screen. **No behavior, data-model, routing,
+grading, check-in, or auth changes** — this is presentation only. No new
+screens. Architecture in `architecture.md` §12.
+
+### 13.1 Principles
+
+- **Motion is feedback, not decoration.** Every animation maps to a real state
+  change: data loading, selection, favorite toggle, navigation, check-in.
+- **Respect `prefers-reduced-motion`.** All non-essential motion is disabled
+  under the OS setting; enter/exit degrade to an opacity-only fade or nothing.
+- **60fps.** Animate `transform` / `opacity` only. `layout` animations are
+  limited to small elements (nav underline, rail highlight, card accent bar) —
+  never the map or long scrolling lists.
+- **Timing scale:** fast 140ms (hover, tap), base 240ms (enter/exit, panels),
+  slow 400ms (route transitions, marker-stagger envelope).
+
+### 13.2 Screen-by-screen changes
+
+**Map (primary focus)**
+- Sidebar becomes a **floating overlay panel** over a full-bleed map: glassy
+  surface (`backdrop-filter`), `elev-lg`, rounded, inset from the viewport
+  edges — instead of the current hard `border-right` column.
+- Park-list loading state: 3–4 **skeleton cards** (shimmer) replace the
+  "Loading parks…" text.
+- Park cards **enter staggered** (fade + ~8px rise, ~40ms stagger) when a
+  fetch resolves.
+- Card **hover**: lift ~2px + shadow step (`elev-sm`→`elev-md`).
+- Selected card: an **animated accent bar** slides between cards (shared
+  layout) instead of the instant border swap.
+- **Grade pill** pops in / ticks the number when it appears or changes.
+- Map **markers drop in staggered** by distance (envelope capped ~600ms
+  regardless of count). Selected marker **scales up + raised z-index**, others
+  dim. `map.panTo()` **recenters** on select.
+- **Detail panel**: spring slide-in from the right + fade; `AnimatePresence`
+  on close.
+- **Floating "Check in" pill** anchored bottom-center of the map when a park
+  is selected (see §13.5 open item 2).
+- Empty states: icon + gentle scale/float-in.
+- User-location dot: soft pulsing ring.
+
+**Nav** — sliding active-link underline (shared layout id) between Map / My
+Dogs / Settings. Route content cross-fades + rises ~6px on navigation.
+
+**Dogs** — dog rail: selected item gets a sliding highlight. Attribute and
+loves/dislikes chips: tap = scale bounce (~0.94→1); state/color change tweened,
+not instant; selection ring animates in. Editor sections fade/stagger on dog
+switch. Photo upload shows a spinner then fades the image in.
+
+**Session** — card springs in on arrival (the check-in payoff moment).
+"Checked in now" badge pulses subtly. "Also here now" list staggers in.
+
+**Auth (login/signup)** — light touch only: card fade+rise on mount, button
+press states. Not a focus of this pass.
+
+### 13.3 New / updated reusable components (extends §9)
+
+- **Skeleton card** — shimmer placeholder for the park list.
+- **Floating panel** — glass overlay container (Map sidebar; mobile bottom
+  sheet, see §13.5).
+- **Animated grade badge** — the §9 grade badge with pop + number tick.
+- **Motion-wrapped park card** — §9 park card with entrance / hover / selected
+  variants.
+- **Sliding-highlight nav / rail** — shared-layout active indicator.
+
+### 13.4 Delivery phases
+
+Each phase is independently shippable. All four have landed.
+
+1. **Foundation** *(done)* — `motion` dependency; motion tokens
+   (`--dur-*`, `--ease-*`) in the Organic tokens file; `prefers-reduced-motion`
+   guard + app component classes in `app/globals.css`; `lib/motion.ts` (shared
+   transitions/variants); `app/(app)/template.tsx` route cross-fade. Map grade
+   pill / park card inline styles extracted to classes. (Dog-editor chip
+   extraction was deferred to Phase 4, where its motion lands.)
+2. **Map liveness** *(done)* — skeleton list, staggered card entrance, card
+   hover lift, animated grade pill, marker drop-in stagger + selected
+   emphasis + `panTo` recenter, detail-panel spring slide-in, pulsing user
+   dot. All gated on reduced-motion.
+3. **Map layout modernization** *(done)* — `.floating-panel` glass overlay
+   (`.map-panel`), floating primary check-in pill, mobile two-detent bottom
+   sheet (`data-expanded`, 700px breakpoint).
+4. **Secondary screens** *(done)* — nav sliding underline (`layoutId`),
+   dog-rail sliding highlight (`layoutId`), dog-editor `.chip` extraction +
+   tap-bounce + state tween, session card spring-in + staggered list +
+   pulsing badge, auth card fade-rise on mount.
+
+### 13.5 Resolved during implementation
+
+1. **Mobile floating-panel pattern.** *Resolved:* non-draggable bottom sheet
+   below a 700px viewport width, two detents — peek (`translateY(calc(100% -
+   132px))`, showing the grip + filters) and expanded (`max-height: 82vh`).
+   A grip button toggles between them; selecting a park auto-collapses to
+   peek. Above 700px the panel is a fixed floating glass card
+   (`top/left/bottom: 16px`, `width: 348px`).
+2. **Floating check-in pill vs. panel button.** *Resolved as proposed:* the
+   bottom-center pill ("Check in at" + the park name) is the primary CTA; the detail
+   panel keeps a secondary `btn-secondary` "Check in here". Both appear only
+   while a park is selected and share the same pending state.
+3. **Marker animation at high park counts (>30).** *Resolved:* per-marker drop
+   delay is `min(index * 40ms, 600ms)` — the stagger envelope never exceeds
+   ~600ms. Pending drop timers are cleared on any list rebuild.
+
+### 13.6 Verification additions (extends §12)
+
+- [ ] All motion respects `prefers-reduced-motion` (toggle the OS setting;
+      confirm opacity-only / no motion).
+- [ ] No layout shift or jank on the Map with ~20 parks (Performance panel,
+      4× CPU throttle).
+- [ ] Floating panel is usable at 375px width (bottom-sheet mode).
+- [ ] Route transitions do not re-trigger data fetches.
+- [ ] Marker stagger cancels cleanly on rapid re-fetch (dog switch, radius
+      change).
+
+## 14. Browse / Map dual view (v1.1)
+
+The `/map` screen gets two view modes over the same data. **Browse** (a
+photo-card discovery feed, holiday-finder style) is the default; **Map** (the
+existing Google map + floating panel from §13.3) is one toggle away. Same
+`/api/places/nearby` payload, same client-side grading, same favorite/check-in
+actions — this is a presentation split, no backend change (`NearbyPark`
+already carries `photoRef`, and `/api/places/photo/[ref]` proxies the image).
+
+### 14.1 Rationale
+
+Choosing a park is a browse-and-compare decision — photo, grade, who's here,
+distance — which a card feed serves better than a map. The map answers a
+narrower question (where exactly, how parks cluster spatially), so it becomes
+an opt-in mode rather than the landing surface.
+
+### 14.2 Behavior
+
+- **Default view:** Browse. The last-used view is remembered per browser in
+  `localStorage` (`tailmap:view`), read after mount (accept a one-frame
+  Browse flash rather than risk a hydration mismatch). No URL involvement —
+  view is component state; the back button does not switch views.
+- **Toggle:** a single persistent floating control ("Browse / Map" segmented
+  pill, top-center of the screen), rendered outside both view layers so it
+  neither moves nor fades during the transition.
+- **Transition:** both layers stay mounted; a ~280ms opacity crossfade with
+  `pointer-events` gated to the active layer. Not an `AnimatePresence`
+  unmount — keeping both mounted preserves Google Map state (center, zoom,
+  tiles) and avoids re-running geolocation on every toggle. Reduced motion →
+  instant swap.
+- **Map lazy-init:** the Google Map is not created until the first switch to
+  Map view (`mapActivated` latch); thereafter it persists behind the Browse
+  layer at `opacity: 0`. It initializes into a full-size (not
+  `display:none`) container, so no resize/reflow dance is needed.
+- **Card click (Browse) / pin or panel-row click (Map):** both open the same
+  **park detail overlay** — a right-side panel on desktop, a bottom sheet on
+  mobile. The overlay carries photo, grade, "who's here now", the check-in
+  CTA, and a **"Show on map"** action that switches to Map view and `panTo`s
+  that park. This replaces the map-anchored detail panel from §13.3.
+- **Sort control (Browse):** a dropdown — **Distance** (default), **Best
+  match** (grade desc, ungraded last), **Most dogs here** (active check-in
+  count desc). Client-side sort over the already-graded list; the Map view's
+  panel list uses the same ordering. Remembered in `localStorage`
+  (`tailmap:sort`). Nearby/Saved tabs and the dog selector are unchanged.
+
+### 14.3 Browse layer layout
+
+- Sticky header: dog selector (when >1 dog), Nearby/Saved segmented control,
+  sort dropdown, result count.
+- Responsive card grid: 1 column on mobile, 2–3 on desktop.
+- **Park photo card:** `<img loading="lazy">` from the photo proxy; a missing
+  `photoRef` falls back to a tinted gradient block with the park initial.
+  Card body: name, tier label, animated grade badge, one-line reason,
+  distance, live checked-in count, favorite toggle (does not open the
+  overlay — `stopPropagation`, per §8).
+- Skeleton **grid** while loading; the existing empty states ("no parks
+  nearby" → Settings, "no saved parks" → browse nearby) carried over.
+
+### 14.4 Delivery phases (continues §13.4)
+
+1. **Scaffold** — `view` + `sort` state (both `localStorage`-backed), floating
+   `ViewToggle`, two crossfading `.view-layer`s, `mapActivated` lazy gate. Map
+   layer = the existing §13 UI. Browse layer = a first-cut card list on the
+   shared data. Sort applied to one shared memo used by both lists.
+2. **Browse visual** — photo cards + fallback, responsive grid, sticky
+   header, skeleton grid.
+3. **Shared detail overlay** — extract the map-anchored panel into one
+   `ParkDetail` used from both layers (desktop side panel / mobile sheet);
+   wire "Show on map" → switch + pan. Retire the anchored panel.
+4. **Polish** — crossfade tuning, image fallback states, reduced-motion
+   paths, Browse scroll-position restore when toggling back from Map.
+
+### 14.5 Verification (extends §13.6)
+
+- [ ] Toggling Browse↔Map does not refetch parks or re-run geolocation.
+- [ ] Map view still works after being opened for the first time mid-session
+      (correct size, markers, `panTo`).
+- [ ] Last view + last sort survive a reload; a cleared/blocked
+      `localStorage` falls back to Browse / Distance without error.
+- [ ] Sort orders match on the Browse grid and the Map panel list.
+- [ ] Detail overlay opens from both views; "Show on map" lands centered on
+      the right park.
+- [ ] Photo card degrades to the gradient fallback when `photoRef` is null or
+      the image 404s.
+- [ ] Reduced motion: view switch is an instant swap, no crossfade.

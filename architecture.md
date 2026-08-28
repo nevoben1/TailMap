@@ -240,9 +240,168 @@ middleware.ts
 | Screen-by-screen requirements | §8 |
 | Tech stack rationale | §10 |
 | Pre-launch verification | §12 |
+| UI Motion & Layout Refresh | §13 → architecture §12 |
 
 ## 11. Open Architecture Questions
 
 1. TTL for Places cache freshness — proposed 24h; may need shortening if park check-in activity should influence how "fresh" a listed park needs to be (grading itself is always live regardless of park-metadata cache age, since check-ins are queried separately from the cached Park row).
 2. Whether to add Vercel Cron cleanup for expired check-ins now or defer until table size becomes a concern (leaning defer, per §5).
 3. Rate-limiting/abuse protection on the Places proxy route (e.g. per-user throttling) — not addressed yet, worth a pass before public launch.
+4. UI Motion refresh (§12): resolved. Route transitions use `app/(app)/template.tsx` (Phase 1). The floating Map panel is a fixed glass card above 700px and a two-detent, button-toggled (non-draggable) bottom sheet below it (Phase 3, specs §13.5).
+
+## 12. Frontend Motion Architecture (specs.md §13)
+
+Implements the v1.1 polish pass. Presentation layer only — no changes to
+data flow, server actions, the RSC/client boundary, or routes.
+
+### 12.1 Library
+
+- **`motion`** (v12+, imported from `motion/react`) — the maintained successor
+  to `framer-motion`. The only runtime dependency added by this pass.
+- Used in **client components only**. No motion primitives in Server
+  Components — the existing RSC boundary is unchanged. Motion wrappers live in
+  the already-`"use client"` files (`app/(app)/map/map-client.tsx`,
+  `components/nav.tsx`, `app/(app)/dogs/dog-rail.tsx`,
+  `app/(app)/dogs/dog-editor.tsx`) plus small new client leaf components.
+- No Lottie, GSAP, or a second animation runtime.
+
+### 12.2 Shared motion module — `lib/motion.ts`
+
+Centralizes timing and variants so the whole app is tunable in one place
+(same rationale as `lib/grading.ts` centralizing grading):
+
+- Transition presets: `springSoft`, `springSnappy` (JS springs — not
+  expressible as CSS), plus `fadeRise` and `stagger` variant objects.
+- Consumed by every `motion.*` element rather than inlining `transition={{…}}`.
+
+### 12.3 Design-system tokens
+
+Added to `_ds/organic-8421d24a-301d-46e5-bce8-d4b57864b820/styles.css` `:root`
+(the system's source of truth, per CLAUDE.md):
+
+- `--dur-fast: 140ms`, `--dur-base: 240ms`, `--dur-slow: 400ms`
+- `--ease-out: cubic-bezier(0.22, 1, 0.36, 1)`
+- `--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1)`
+
+Springs stay in `lib/motion.ts` (CSS has no spring); CSS-driven transitions
+(hover, chip state) use the duration + easing tokens.
+
+### 12.4 Reduced motion
+
+- Global CSS guard in `styles.css`:
+  `@media (prefers-reduced-motion: reduce) { *, *::before, *::after {
+  animation-duration: .01ms !important; transition-duration: .01ms !important;
+  animation-iteration-count: 1 !important; } }`
+- JS-driven springs gate on `useReducedMotion()` and return opacity-only (or
+  no-op) variants.
+
+### 12.5 Route transitions
+
+- `app/(app)/template.tsx` (re-mounts per navigation) wraps `children` in a
+  `motion.div` fade + ~6px rise on mount.
+- No cross-route **exit** animation — App Router `template.tsx` has no exit
+  hook. `AnimatePresence` is used only **within** a screen (Map detail panel,
+  chip state, empty states), never across routes.
+- The template must not introduce a new data boundary — it renders children
+  directly, no fetching.
+
+### 12.6 Inline-style cleanup (bulk of the diff)
+
+`map-client.tsx` and `dog-editor.tsx` currently carry large inline `style`
+objects. Inline style objects can't be transitioned cleanly and class-based
+keyframes are cheaper. Extract the repeated blocks into DS classes in
+`styles.css`: `.park-card`, `.floating-panel`, `.grade-pill`, `.chip`,
+`.chip--love`, `.chip--dislike`, `.skeleton`. This is Phase 1 and is the
+largest part of the change by line count; it is behavior-neutral.
+
+### 12.7 Google Maps markers
+
+- Keep `google.maps.Marker` (already loaded via `@googlemaps/js-api-loader`).
+  No new map library.
+- Drop-in: set `animation: google.maps.Animation.DROP` per marker with a
+  `setTimeout` stagger; total envelope capped (~600ms) so high park counts
+  don't trail (specs §13.5 item 3).
+- Selected-marker emphasis: swap to a larger `icon` `scaledSize` + `setZIndex`;
+  dim others by re-rendering their icons at lower opacity.
+- Recenter: `map.panTo(latLng)` on select.
+- Stagger timers are tracked in a ref and cleared on the marker-rebuild effect
+  so a rapid re-fetch (dog switch, radius change) cancels pending drops.
+
+### 12.8 Performance guardrails
+
+- `will-change: transform` only on elements currently animating.
+- `layout` / shared-layout animations restricted to small elements: nav
+  underline, dog-rail highlight, park-card accent bar. Never the map, never a
+  full list container.
+- Staggered list entrances animate individual items (`transform`/`opacity`),
+  not a reflowing container.
+
+## 13. Browse / Map dual view (specs.md §14)
+
+The `/map` route keeps its path, middleware, and data flow. `MapClient`
+becomes a view orchestrator; the map and the new browse feed are two layers
+over one dataset.
+
+### 13.1 Component shape
+
+```text
+app/(app)/map/
+  page.tsx              # unchanged — RSC: auth, dogs, settings → <MapClient>
+  map-client.tsx        # orchestrator: fetch + grade + view/sort state + refs
+  view-toggle.tsx       # floating Browse/Map segmented control
+  browse-view.tsx       # sticky header + responsive grid of <ParkPhotoCard>
+  park-photo-card.tsx   # photo (proxy) + fallback + grade/reason/meta/favorite
+  park-detail.tsx       # shared overlay: side panel (desktop) / sheet (mobile)
+```
+
+- The orchestrator owns everything stateful (geolocation, `/api/places/nearby`
+  fetch, grading memos, Google Map refs + marker effects, `selectedParkId`,
+  `view`, `sort`). The map JSX stays inline in the orchestrator; `browse-view`
+  and `park-detail` are presentational, fed by props.
+- `park-detail` is mounted from both layers — anchored inside the map layer is
+  dropped in favour of one overlay positioned relative to `<main>`.
+
+### 13.2 Two layers, both mounted
+
+- `<main position:relative>` contains `<ViewToggle>` plus two
+  `.view-layer` (`position:absolute; inset:0`) elements — browse and map.
+- Each layer is a `motion.div` animating only `opacity` (~280ms tween, not a
+  spring — springs overshoot on opacity). The inactive layer gets
+  `pointer-events: none` and `aria-hidden`.
+- **No `AnimatePresence`** — unmounting the map layer would discard the
+  Google Map instance and re-trigger geolocation on the next toggle.
+
+### 13.3 Map lazy-init
+
+- A `mapActivated` state latch flips `true` the first time `view === "map"`.
+- The map-init effect gates on `coords && mapActivated`. Because the map layer
+  is only ever `opacity: 0` (never `display: none`), its container has real
+  dimensions from creation — no `google.maps.event.trigger(map, "resize")`
+  needed.
+
+### 13.4 Sort
+
+- `sort: "distance" | "grade" | "dogs"`, `localStorage`-backed
+  (`tailmap:sort`), default `"distance"`.
+- One `useMemo` sorts the graded list; both `browse-view` and the map layer's
+  panel list consume that single ordering. Markers keep building from the
+  unsorted graded array (order only affects drop-stagger sequence).
+- `"grade"` sorts by `grade.grade` desc with ungraded parks last; `"dogs"` by
+  `checkedInDogs.length` desc.
+
+### 13.5 Persistence
+
+- `tailmap:view` and `tailmap:sort` in `localStorage`, each read in a mount
+  `useEffect` (not during render) and written in a change `useEffect`. Every
+  access is `try/catch`-guarded; a throw or missing value falls back to the
+  defaults (Browse / Distance). Nothing view-related touches the URL or the
+  server.
+
+### 13.6 Photos
+
+- `park-photo-card` requests `/api/places/photo/${encodeURIComponent(photoRef)}`
+  via a plain `<img loading="lazy">`. The proxy already sets
+  `Cache-Control: immutable`, so re-renders and toggles don't refetch.
+- Null `photoRef` or an image `error` event → a CSS gradient block with the
+  park's initial. The proxy's 60 req/min per-user limit comfortably covers a
+  ~20-card grid load.

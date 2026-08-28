@@ -1,11 +1,13 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import { useActionState, useRef, useState } from "react";
 
 import type { Dog } from "@prisma/client";
 
 import { saveDog, type SaveDogState } from "@/lib/actions/dogs";
 import { createDogPhotoUploadUrl } from "@/lib/actions/storage";
+import { springSnappy } from "@/lib/motion";
 import {
   COLOR_HEX,
   TRAIT_DEFS,
@@ -28,6 +30,7 @@ function initialAttrs(dog: Dog | null): DogAttributes {
 }
 
 export function DogEditor({ dog }: { dog: Dog | null }) {
+  const reduce = useReducedMotion();
   const [state, formAction, pending] = useActionState<SaveDogState, FormData>(
     saveDog,
     null
@@ -189,37 +192,22 @@ export function DogEditor({ dog }: { dog: Dog | null }) {
               .map((option) => {
                 const selected = attrs[group.name] === option;
                 return (
-                  <button
+                  <motion.button
                     key={option}
                     type="button"
                     onClick={() => setAttr(group.name, option)}
-                    className="flex items-center"
-                    style={{
-                      cursor: "pointer",
-                      padding: "7px 14px",
-                      borderRadius: 999,
-                      background: selected ? "var(--color-accent-2-200)" : "var(--color-bg)",
-                      border: `1.5px solid ${selected ? "var(--color-accent-2-600)" : "rgba(32,30,29,0.35)"}`,
-                      fontSize: 13,
-                      color: selected ? "var(--color-accent-2-900)" : "rgba(32,30,29,0.65)",
-                    }}
+                    whileTap={reduce ? undefined : { scale: 0.94 }}
+                    transition={springSnappy}
+                    className={`chip${selected ? " chip--selected" : ""}`}
                   >
                     {group.name === "Color" && (
                       <span
-                        style={{
-                          width: 13,
-                          height: 13,
-                          borderRadius: "50%",
-                          flex: "none",
-                          background: COLOR_HEX[option] ?? "transparent",
-                          border: "1px solid rgba(32,30,29,0.15)",
-                          marginRight: 7,
-                          display: "inline-block",
-                        }}
+                        className="chip__swatch"
+                        style={{ background: COLOR_HEX[option] ?? "transparent" }}
                       />
                     )}
                     {option}
-                  </button>
+                  </motion.button>
                 );
               })}
           </div>
@@ -296,44 +284,25 @@ export function DogEditor({ dog }: { dog: Dog | null }) {
               .map((option) => {
                 const key = `${group.name}:${option}`;
                 const value = preferences[key];
-                const style =
-                  value === "love"
-                    ? { bg: "#f0fae1", border: "#728157", color: "#3d472b" }
-                    : value === "dislike"
-                    ? { bg: "#fff2eb", border: "#8c491a", color: "#8c491a" }
-                    : { bg: "var(--color-bg)", border: "rgba(32,30,29,0.35)", color: "rgba(32,30,29,0.6)" };
+                const variant =
+                  value === "love" ? " chip--love" : value === "dislike" ? " chip--dislike" : "";
                 return (
-                  <button
+                  <motion.button
                     key={option}
                     type="button"
                     onClick={() => togglePreference(group.name, option)}
-                    className="flex items-center"
-                    style={{
-                      cursor: "pointer",
-                      padding: "7px 14px",
-                      borderRadius: 999,
-                      background: style.bg,
-                      border: `1.5px solid ${style.border}`,
-                      fontSize: 13,
-                      color: style.color,
-                    }}
+                    whileTap={reduce ? undefined : { scale: 0.94 }}
+                    transition={springSnappy}
+                    className={`chip${variant}`}
                   >
                     {group.name === "Color" && (
                       <span
-                        style={{
-                          width: 13,
-                          height: 13,
-                          borderRadius: "50%",
-                          flex: "none",
-                          background: COLOR_HEX[option] ?? "transparent",
-                          border: "1px solid rgba(32,30,29,0.15)",
-                          marginRight: 7,
-                          display: "inline-block",
-                        }}
+                        className="chip__swatch"
+                        style={{ background: COLOR_HEX[option] ?? "transparent" }}
                       />
                     )}
                     {option}
-                  </button>
+                  </motion.button>
                 );
               })}
           </div>

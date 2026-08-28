@@ -1,9 +1,11 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { signOut } from "@/lib/actions/auth";
+import { springSnappy } from "@/lib/motion";
 
 const LINKS = [
   { href: "/map", label: "Map" },
@@ -13,19 +15,31 @@ const LINKS = [
 
 export function Nav({ avatarInitial }: { avatarInitial: string }) {
   const pathname = usePathname();
+  const reduce = useReducedMotion();
 
   return (
     <nav className="nav flex-none">
       <span className="nav-brand">Tailmap</span>
-      {LINKS.map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          aria-current={pathname.startsWith(link.href) ? "page" : undefined}
-        >
-          {link.label}
-        </Link>
-      ))}
+      {LINKS.map((link) => {
+        const active = pathname.startsWith(link.href);
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="nav-link"
+            aria-current={active ? "page" : undefined}
+          >
+            {link.label}
+            {active && (
+              <motion.span
+                layoutId="nav-underline"
+                className="nav-underline"
+                transition={reduce ? { duration: 0 } : springSnappy}
+              />
+            )}
+          </Link>
+        );
+      })}
       <div
         className="rounded-full flex items-center justify-center"
         style={{
