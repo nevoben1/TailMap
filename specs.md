@@ -147,6 +147,10 @@ All prior open questions have been resolved (see §5–§10 for the locked-in de
 1. Exact grading scaling factor and reason-string generation logic (proposed defaults in §5) will need tuning against real data once check-in volume exists — not a blocker for implementation, just expect adjustment post-launch.
 2. UI Motion & Layout Refresh (§13): all three implementation open items are now resolved — see §13.5.
 
+**Decisions locked in:**
+
+- **Directions link (park detail):** "Directions" button opens `https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>` in a new tab. Uses the key-less `api=1` URL format — no Places/Maps billing, no API call. Google Maps only (opens Maps app on mobile, maps.google.com on desktop); no Apple Maps variant. Destination is park coords; `destination_place_id` is not used since `externalPlaceId` isn't exposed on `NearbyPark`.
+
 ## 12. Verification Checklist (pre-launch)
 
 Checked off = verified against a live Supabase/Places backend (test users, real check-in rows, real API calls, cleaned up afterward) or, for the grading algorithm, an automated unit-test suite. Items whose interaction is client-only (chip clicks, tab toggles) were verified by code review + type-check/build rather than live browser clicks — no browser-automation tool is available in this environment; a manual click-through is still worth doing before shipping.
