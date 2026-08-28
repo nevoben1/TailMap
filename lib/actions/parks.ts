@@ -40,6 +40,39 @@ function fetchActiveCheckIns(parkIds: string[], now: Date) {
   });
 }
 
+function toCheckedInDog(c: ActiveCheckIn): CheckedInDog {
+  return {
+    id: c.dog.id,
+    name: c.dog.name,
+    breed: c.dog.breed,
+    size: c.dog.size,
+    color: c.dog.color,
+    age: c.dog.age,
+    energy: c.dog.energy,
+    gender: c.dog.gender,
+    ownerId: c.dog.ownerId,
+  };
+}
+
+/**
+ * Just the live occupancy for a known set of parks — no Places lookup, no
+ * favorites. The client polls this to refresh grades when other people check
+ * in/out without re-fetching park data that hasn't changed (the park set only
+ * changes when the viewer moves). Returns a parkId -> dogs map; parks with no
+ * active check-ins are simply absent.
+ */
+export async function getCheckedInDogsByPark(
+  parkIds: string[]
+): Promise<Record<string, CheckedInDog[]>> {
+  if (parkIds.length === 0) return {};
+  const checkIns = await fetchActiveCheckIns(parkIds, new Date());
+  const byPark: Record<string, CheckedInDog[]> = {};
+  for (const c of checkIns) {
+    (byPark[c.parkId] ??= []).push(toCheckedInDog(c));
+  }
+  return byPark;
+}
+
 /** Pure — no I/O. Shared by nearby search and the Saved list once each has fetched its own check-ins/favorites. */
 function buildNearbyParks(
   parks: Park[],
@@ -56,17 +89,7 @@ function buildNearbyParks(
 
   return parks.map((park) => {
     const checkIns = checkInsByPark.get(park.id) ?? [];
-    const checkedInDogs: CheckedInDog[] = checkIns.map((c) => ({
-      id: c.dog.id,
-      name: c.dog.name,
-      breed: c.dog.breed,
-      size: c.dog.size,
-      color: c.dog.color,
-      age: c.dog.age,
-      energy: c.dog.energy,
-      gender: c.dog.gender,
-      ownerId: c.dog.ownerId,
-    }));
+    const checkedInDogs: CheckedInDog[] = checkIns.map(toCheckedInDog);
 
     return {
       id: park.id,

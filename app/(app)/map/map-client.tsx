@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { checkIn } from "@/lib/actions/checkins";
 import { toggleFavorite } from "@/lib/actions/favorites";
 import type { NearbyPark } from "@/lib/actions/parks";
-import { computeParkGrade, describeCheckedInDogs } from "@/lib/grading";
+import { computeParkGrade, describeCheckedInDogs, type CheckedInDog } from "@/lib/grading";
 import { fadeRise, reducedFade, springSoft, staggerContainer } from "@/lib/motion";
 
 import { BrowseView } from "./browse-view";
@@ -225,6 +225,53 @@ export function MapClient({
       .catch((err) => setFetchError(err instanceof Error ? err.message : "Failed to load saved parks"))
       .finally(() => setLoadingSaved(false));
   }, [tab, coords]);
+
+  // Live occupancy: parks and favorites don't change while the viewer stays
+  // put, but who's checked in does. Poll just the check-in data (no Places
+  // lookup) and splice it into the park state — useMemo re-grades for free.
+  // Keyed on the park id set so re-grading / occupancy updates don't restart
+  // the interval; only moving (a new park set) does.
+  const polledParkIds = useMemo(
+    () => [...new Set([...parks, ...savedParks].map((p) => p.id))].sort().join(","),
+    [parks, savedParks]
+  );
+  useEffect(() => {
+    if (!polledParkIds) return;
+    let cancelled = false;
+
+    const tick = () => {
+      fetch(`/api/checkins?parkIds=${encodeURIComponent(polledParkIds)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { byPark: Record<string, CheckedInDog[]> } | null) => {
+          if (cancelled || !data) return;
+          // Only replace state (and pay for re-grade + marker rebuild) when the
+          // occupancy actually moved — a steady-state poll changes nothing.
+          const sig = (dogs: CheckedInDog[]) =>
+            dogs.map((d) => d.id).sort().join(",");
+          const merge = (list: NearbyPark[]) => {
+            let changed = false;
+            const next = list.map((p) => {
+              const dogs = data.byPark[p.id] ?? [];
+              if (sig(dogs) === sig(p.checkedInDogs)) return p;
+              changed = true;
+              return { ...p, checkedInDogs: dogs };
+            });
+            return changed ? next : list;
+          };
+          setParks(merge);
+          setSavedParks(merge);
+        })
+        .catch(() => {
+          /* transient — next tick retries */
+        });
+    };
+
+    const handle = setInterval(tick, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+    };
+  }, [polledParkIds]);
 
   function handleToggleFavorite(parkId: string, e?: React.MouseEvent) {
     e?.stopPropagation();
