@@ -36,6 +36,12 @@ export function photoProxyUrl(photoRef: string): string {
   return `/api/places/photo/${encodeURIComponent(photoRef)}`;
 }
 
+/** Google Maps directions deep link (specs §11). `api=1` is the free, key-less
+ *  URL format — opens the Maps app on mobile, maps.google.com on desktop. */
+export function directionsUrl(park: Pick<GradedPark, "lat" | "lng">): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${park.lat},${park.lng}`;
+}
+
 const SORT_LABEL: Record<SortKey, string> = {
   distance: "Distance",
   grade: "Best match",

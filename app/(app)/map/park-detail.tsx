@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { springSoft } from "@/lib/motion";
 
 import { FavoriteHeart, GradePill } from "./park-bits";
-import { formatDistance, photoProxyUrl, type GradedPark } from "./shared";
+import { directionsUrl, formatDistance, photoProxyUrl, type GradedPark } from "./shared";
 
 function useIsNarrow() {
   const [narrow, setNarrow] = useState(false);
@@ -184,6 +184,27 @@ export function ParkDetail({
               Show on map
             </button>
           )}
+          <a
+            href={directionsUrl(park)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary btn-block"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M3 11l19-9-9 19-2-8-8-2z" />
+            </svg>
+            Directions
+          </a>
         </div>
       </motion.div>
     </>
