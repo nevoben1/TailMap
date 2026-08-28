@@ -510,9 +510,14 @@
 .photo-card__media {
   position: relative;
   aspect-ratio: 16 / 10;
+  flex: none; /* size purely from the aspect ratio, never from image intrinsics */
+  overflow: hidden; /* clip a source photo that doesn't match 16:10 */
   background: var(--color-neutral-300);
 }
-.photo-card__media img {
+.photo-card__media img,
+.photo-card__media .park-photo-fallback {
+  position: absolute; /* out of flow so a tall photo can't stretch the card */
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
