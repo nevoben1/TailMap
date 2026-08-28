@@ -65,6 +65,7 @@ function buildNearbyParks(
       age: c.dog.age,
       energy: c.dog.energy,
       gender: c.dog.gender,
+      ownerId: c.dog.ownerId,
     }));
 
     return {

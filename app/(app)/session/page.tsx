@@ -51,6 +51,7 @@ export default async function SessionPage({
       age: c.dog.age,
       energy: c.dog.energy,
       gender: c.dog.gender,
+      ownerId: c.dog.ownerId,
     }))
   );
 
@@ -65,6 +66,7 @@ export default async function SessionPage({
         parkName={activeCheckIn.park.name}
         checkedInLabel={checkedInLabel}
         alsoHere={alsoHere}
+        me={userId}
         endSession={endSessionForDog}
       />
     </main>

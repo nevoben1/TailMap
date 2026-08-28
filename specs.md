@@ -28,8 +28,8 @@ The following end-to-end loop must work in a deployed, responsive web app:
 | 3 | Map (home) | Browse & filter nearby parks, see grades, check in | Nearby/Saved tabs; empty states (no results / no saved); park list; map pins; park detail popover |
 | 4 | Active Session | Shown after check-in | "Also here now" list, End session action |
 | 5 | Settings | Discovery radius, units, privacy, notification toggles | — |
-| 6 | Notifications / Activity feed | *(v2 — out of scope for v1, see §7)* | — |
-| 7 | Messages | *(out of scope for v1, see §7)* | — |
+| 6 | Notifications / Activity feed | *(still out of scope — see §7; the v1.2 chat feature adds an unread badge + email nudges, not a feed)* | — |
+| 7 | Chat (inbox + thread) | 1:1 direct messages between owners | Inbox (conversation list, unread counts); thread (message list, composer); empty inbox state; blocked-user state. Added in v1.2 — see §15 |
 
 Global: top nav bar (Map / My Dogs / Messages / Notifications / Settings / avatar) shown on all screens except onboarding. Since Messages and Notifications are out of scope for v1, their nav icons are hidden or disabled (decision needed — see Open Questions).
 
@@ -69,8 +69,8 @@ For a viewing dog **D** and park **P**:
 
 ## 7. Explicit Out of Scope (v1)
 
-- **Messaging** (thread list, chat, composer) — entire feature deferred, not just real-time delivery.
-- **Notifications / Activity feed** — deferred to v2. Nav icon is hidden (not disabled) in v1.
+- **Messaging** (thread list, chat, composer) — *deferred in v1; added in v1.2, see §15.* 1:1 only.
+- **Notifications / Activity feed** — the aggregated activity feed is **still out of scope**. v1.2 chat adds only: an in-app unread badge on the Chat nav icon (Realtime-driven) and throttled email nudges for unread messages. No feed screen, no notification-history list, no non-chat notifications.
 - **Native mobile apps** (iOS/Android) — web-responsive only.
 - **Payments / monetization** — no subscriptions, ads, or paid tiers.
 - **Admin dashboard** — no internal moderation/admin tooling.
@@ -378,3 +378,182 @@ an opt-in mode rather than the landing surface.
 - [ ] Photo card degrades to the gradient fallback when `photoRef` is null or
       the image 404s.
 - [ ] Reduced motion: view switch is an instant swap, no crossfade.
+
+## 15. Chat (v1.2)
+
+1:1 direct messaging between dog owners, with a live in-app unread badge and
+throttled email nudges for unread messages. Architecture in `architecture.md`
+§14.
+
+### 15.1 Scope
+
+**In:**
+- 1:1 conversations only (no group chat, no park rooms).
+- **Open DM** — any authenticated user can start a conversation with any other
+  user. Entry points are the places you already see other people:
+  - Park detail "who's here now" list → **Message owner** per dog row.
+  - Active Session "also here now" list → **Message owner** per dog row (this
+    re-adds the per-dog message action that §8 removed for v1).
+- Text messages only. No attachments, images, or "share a park" cards in v1.2.
+- Live delivery via Supabase Realtime (Postgres Changes) — new messages appear
+  in an open thread without a refresh; the nav Chat icon shows a live unread
+  count.
+- **Block** — either party can block the other: blocked users cannot send to
+  each other, and existing threads are hidden from the blocker.
+- **Email nudge** — when a recipient has unread messages and is not currently
+  active, one email is sent per conversation, throttled (see §15.5).
+
+**Out (v1.2):**
+- Group / multi-party conversations.
+- Attachments, media, link previews, reactions, typing indicators as a shipped
+  feature (Presence is used internally for email suppression only — §15.5).
+- Read receipts shown to the other party (`lastReadAt` is tracked for unread
+  counts and email logic, not surfaced as "seen").
+- Message edit / delete / unsend.
+- An activity feed or notification-history screen.
+- Web push, native push, PWA install, SMS.
+- User reporting / moderation tooling (no admin capacity — Block is the only
+  safety control; a plain `mailto:` abuse link is acceptable).
+- Search within messages.
+
+### 15.2 Screens
+
+**Inbox — `/chat`**
+- List of the current user's conversations, most-recent-first (`lastMessageAt`).
+- Each row: other owner's name + avatar initial, last-message snippet,
+  relative timestamp, unread count badge when unread > 0.
+- Empty state: "No conversations yet" + copy pointing to park detail / active
+  session as the way to start one.
+- Blocked conversations are not listed for the blocker.
+
+**Thread — `/chat/[conversationId]`**
+- Header: other owner's name, avatar, overflow menu (Block / Unblock, abuse
+  `mailto:`).
+- Message list, oldest→newest, auto-scrolled to bottom on open and on inbound
+  message while already at bottom.
+- Composer: single-line-growing textarea + Send. Enter sends, Shift+Enter
+  newline. Trims whitespace; empty/whitespace-only sends are ignored.
+- Opening the thread and receiving a message while focused marks it read
+  (updates `lastReadAt`), which clears that conversation's contribution to the
+  nav badge.
+- Blocked state (either direction): composer replaced with "You can't message
+  this person" / "You've blocked this person — Unblock".
+- 404 if the conversation id isn't one the user participates in.
+
+**Nav**
+- A **Chat icon** is added to the top nav (`components/nav.tsx`), between My
+  Dogs and Settings. It carries a live unread badge (sum of unread across all
+  the user's conversations). The badge updates via Realtime without a route
+  change or poll.
+
+**Settings**
+- One new toggle: **Email me about unread messages** (`notifyEmail`, default
+  **on**). No other notification settings.
+
+### 15.3 Starting a conversation
+
+- **Message owner** action calls `startConversation(otherUserId)`.
+- Conversations are 1:1 and de-duplicated by a canonical `pairKey` =
+  `[userA, userB].sort().join(":")` with a unique constraint. Get-or-create by
+  `pairKey`, then navigate to `/chat/[conversationId]`.
+- If either user has blocked the other, `startConversation` refuses (the
+  Message action is hidden/disabled in that case where block state is known).
+- You cannot start a conversation with yourself (the action is not rendered on
+  your own dogs).
+
+### 15.4 Live delivery & unread
+
+- Delivery is Supabase Realtime **Postgres Changes** on the `Message` table.
+  This requires Row Level Security on the three chat tables (`Conversation`,
+  `ConversationParticipant`, `Message`) with **SELECT-only** policies scoped to
+  the participant (`auth.uid()`). This is the first use of RLS in the project;
+  all writes still go through server actions using the Supabase **service
+  role**, which bypasses RLS, so server authorization logic is unchanged in
+  style. Details in `architecture.md` §14.
+- An open thread subscribes to inserts for its `conversationId`.
+- A per-user subscription (on the user's `ConversationParticipant` rows / an
+  inbox channel) drives the nav badge and inbox live-updates.
+- Unread for a conversation = messages with `createdAt > lastReadAt` and
+  `senderId != me`. `markRead` sets `lastReadAt = now()`.
+
+### 15.5 Email nudge (no scheduler)
+
+Sent inline from the `sendMessage` server action — **no cron / scheduled
+job**. After the message row is written, for the recipient:
+
+- skip if `recipient.notifyEmail` is false;
+- skip if the recipient is currently **active** — their `lastReadAt` for this
+  conversation is under 60s old. The thread client marks the conversation read
+  on mount and on every inbound message while open, so someone actually reading
+  keeps this fresh. (Resolved this way instead of Realtime Presence — no extra
+  column, no heartbeat.);
+- skip if `participant.lastChatEmailAt > participant.lastReadAt` — we already
+  emailed them about this still-unread thread; wait until they read it;
+- skip if `now() - participant.lastChatEmailAt < 10 minutes` (hard cooldown
+  floor);
+- otherwise send a "New messages from {name}" email (snippet + deep link to
+  the thread) and set `participant.lastChatEmailAt = now()`.
+
+The send runs in `waitUntil(...)` so it never delays the sender's request and
+an email failure never fails the message send. Net effect: at most one email
+per conversation per 10 minutes, only while the thread is genuinely unread and
+the recipient is away.
+
+Provider: **Resend** (`RESEND_API_KEY`, `EMAIL_FROM`). Sending domain needs
+SPF/DKIM configured.
+
+Known limitation: there is no "wait 10 minutes of silence, then summarize"
+grace period — the first unread message to an away recipient triggers the
+email within seconds. Adding a true digest later needs a scheduler (Vercel
+Cron or Supabase `pg_cron`) but no schema change beyond `lastChatEmailAt`.
+
+### 15.6 Data model (extends §4)
+
+- **Conversation** — id, `pairKey` (unique), createdAt, `lastMessageAt`
+  (denormalized, for inbox sort).
+- **ConversationParticipant** — (conversationId, userId) composite id,
+  `lastReadAt`, `lastChatEmailAt`. Exactly two rows per conversation in v1.2.
+- **Message** — id, conversationId, senderId, body (text), createdAt.
+- **Block** — (blockerId, blockedId) composite id, createdAt.
+- **Settings** — add `notifyEmail Boolean @default(true)`.
+
+Nothing here is cached or derived-and-stored in a way that conflicts with the
+"grades are never stored" rule — that rule is unaffected.
+
+### 15.7 Delivery phases
+
+Each independently shippable.
+
+1. **Model + RLS migration** — the four new models, `Settings.notifyEmail`,
+   enable RLS + SELECT policies on the three chat tables, add `Message` to the
+   `supabase_realtime` publication.
+2. **Inbox + thread + entry points** — `/chat` and `/chat/[id]`, server
+   actions (`startConversation`, `sendMessage`, `markRead`), "Message owner"
+   buttons in park detail and active session. Realtime subscription in the
+   open thread.
+3. **Nav badge + presence** — Chat nav icon with live unread badge; per-user
+   inbox subscription; Presence wiring.
+4. **Block** — `blockUser` / `unblockUser`, thread + inbox + start-conversation
+   enforcement, thread menu with abuse `mailto:`.
+5. **Email nudge** — Resend wrapper, template, throttled send from
+   `sendMessage`, Settings toggle.
+
+### 15.8 Verification (extends §12)
+
+- [ ] From park detail "who's here now", **Message owner** opens a thread;
+      sending the same pair a second time reuses the same conversation.
+- [ ] A message sent by user A appears in user B's open thread within ~1s with
+      no refresh (Realtime).
+- [ ] Nav unread badge increments on inbound message and clears when the
+      thread is opened / read, without a route change.
+- [ ] RLS: a direct Supabase client subscription as user C to a conversation
+      between A and B returns no rows.
+- [ ] Blocking hides the thread for the blocker, disables the composer for
+      both, and makes `startConversation` refuse.
+- [ ] Email nudge: away recipient with `notifyEmail` on gets exactly one email
+      for a burst of messages; a second burst within 10 min sends none; after
+      reading and a new away burst, one more is sent.
+- [ ] Email nudge is suppressed when the recipient's client is connected
+      (Presence).
+- [ ] `notifyEmail` off → no email under any of the above.
+- [ ] Opening `/chat/[id]` for a conversation the user is not part of 404s.

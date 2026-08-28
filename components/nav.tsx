@@ -6,7 +6,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { signOut } from "@/lib/actions/auth";
+import { getUnreadTotalAction } from "@/lib/actions/chat";
 import { DURATION, springSnappy } from "@/lib/motion";
+import { subscribeToInboxActivity } from "@/lib/realtime";
 
 type IconLink = { href: string; label: string; icon: React.ReactNode };
 
@@ -25,6 +27,12 @@ const DogIcon = (
     <path d="M8 14v.5" />
     <path d="M4.42 11.25A13.15 13.15 0 0 0 4 14.56C4 18.73 7.58 21 12 21s8-2.27 8-6.44a11.7 11.7 0 0 0-.49-3.31" />
     <path d="M8.5 8.5c-.38 1.05-1.08 2.03-2.34 2.5-1.93.72-3.58-.3-3.66-1-.11-.99 1.18-6.53 4-7 1.92-.32 3.65.85 3.65 2.24A7.5 7.5 0 0 1 14 5.28c0-1.39 1.84-2.6 3.77-2.28 2.82.47 4.11 6.01 4 7-.08.7-1.73 1.72-3.66 1-1.26-.47-1.85-1.45-2.24-2.5" />
+  </svg>
+);
+
+const ChatIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
   </svg>
 );
 
@@ -118,9 +126,53 @@ function SettingsMenu() {
   );
 }
 
-export function Nav({ avatarInitial }: { avatarInitial: string }) {
+export function Nav({
+  avatarInitial,
+  meId,
+  unreadCount = 0,
+}: {
+  avatarInitial: string;
+  meId: string;
+  unreadCount?: number;
+}) {
   const pathname = usePathname();
   const reduce = useReducedMotion();
+  const [unread, setUnread] = useState(unreadCount);
+
+  // Live badge (architecture.md §14.3): on any Realtime chat activity, re-query
+  // the authoritative total rather than tracking deltas locally. Also refresh
+  // when the tab regains focus.
+  useEffect(() => {
+    if (!meId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      getUnreadTotalAction()
+        .then(setUnread)
+        .catch(() => {});
+    };
+    const debouncedRefresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 400);
+    };
+    const onFocus = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    const unsub = subscribeToInboxActivity(meId, debouncedRefresh);
+    document.addEventListener("visibilitychange", onFocus);
+    refresh();
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onFocus);
+      unsub();
+    };
+  }, [meId]);
+
+  const links: IconLink[] = [
+    ...LINKS,
+    { href: "/chat", label: "Messages", icon: ChatIcon },
+  ];
 
   return (
     <nav className="nav flex-none">
@@ -131,17 +183,25 @@ export function Nav({ avatarInitial }: { avatarInitial: string }) {
       </Link>
 
       <div className="nav-side nav-side--end">
-        {LINKS.map((link) => {
+        {links.map((link) => {
           const active = pathname.startsWith(link.href);
+          const showBadge = link.href === "/chat" && unread > 0;
           return (
             <Link
               key={link.href}
               href={link.href}
               className="nav-link nav-icon-btn"
-              aria-label={link.label}
+              aria-label={
+                showBadge ? `${link.label} (${unread} unread)` : link.label
+              }
               aria-current={active ? "page" : undefined}
             >
               {link.icon}
+              {showBadge && (
+                <span className="nav-badge" aria-hidden>
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
               {active && (
                 <motion.span
                   layoutId="nav-underline"

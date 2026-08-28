@@ -22,6 +22,8 @@ export type CheckedInDog = {
   age: string;
   energy: string;
   gender: string;
+  /** Owner of this dog — used by the "Message owner" chat entry point (specs §15.3). */
+  ownerId: string;
 };
 
 export type ParkGrade = {
@@ -32,6 +34,7 @@ export type ParkGrade = {
 
 export type DogMatch = {
   dogId: string;
+  ownerId: string;
   name: string;
   breed: string;
   sign: TraitValue | "neutral";
@@ -126,6 +129,6 @@ export function describeCheckedInDogs(
     .map((dog) => {
       const scored = scoreDog(viewingDogPreferences, dog);
       const { sign, reason } = describeMatch(scored);
-      return { dogId: dog.id, name: dog.name, breed: dog.breed, sign, reason };
+      return { dogId: dog.id, ownerId: dog.ownerId, name: dog.name, breed: dog.breed, sign, reason };
     });
 }

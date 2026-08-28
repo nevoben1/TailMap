@@ -29,6 +29,7 @@ export async function saveSettings(
   const discoveryRadius = Number(formData.get("discoveryRadius"));
   const distanceUnit = String(formData.get("distanceUnit"));
   const checkInExpiryHours = Number(formData.get("checkInExpiryHours"));
+  const notifyEmail = formData.get("notifyEmail") != null;
 
   if (!VALID_RADII.includes(discoveryRadius)) {
     return { error: "Invalid discovery radius." };
@@ -42,8 +43,8 @@ export async function saveSettings(
 
   await prisma.settings.upsert({
     where: { userId: user.id },
-    update: { discoveryRadius, distanceUnit, checkInExpiryHours },
-    create: { userId: user.id, discoveryRadius, distanceUnit, checkInExpiryHours },
+    update: { discoveryRadius, distanceUnit, checkInExpiryHours, notifyEmail },
+    create: { userId: user.id, discoveryRadius, distanceUnit, checkInExpiryHours, notifyEmail },
   });
 
   revalidatePath("/map");

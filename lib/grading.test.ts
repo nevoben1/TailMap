@@ -10,6 +10,7 @@ function dog(overrides: Partial<CheckedInDog> & { id: string; name: string }): C
     age: "Adult",
     energy: "Moderate",
     gender: "Male",
+    ownerId: "owner-1",
     ...overrides,
   };
 }

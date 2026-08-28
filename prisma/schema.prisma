@@ -15,6 +15,12 @@ model User {
   dogs          Dog[]
   favorites     Favorite[]
   settings      Settings?
+
+  // Chat (specs.md §15 / architecture.md §14)
+  conversations  ConversationParticipant[]
+  messagesSent   Message[]
+  blocksMade     Block[]                   @relation("BlocksMade")
+  blocksReceived Block[]                   @relation("BlocksReceived")
 }
 
 model Dog {
@@ -74,9 +80,62 @@ model Favorite {
 }
 
 model Settings {
-  userId             String @id
-  user               User   @relation(fields: [userId], references: [id])
-  discoveryRadius    Int    @default(3) // miles
-  distanceUnit       String @default("mi")
-  checkInExpiryHours Int    @default(3) // per specs.md §6, app-level default, editable here
+  userId             String  @id
+  user               User    @relation(fields: [userId], references: [id])
+  discoveryRadius    Int     @default(3) // miles
+  distanceUnit       String  @default("mi")
+  checkInExpiryHours Int     @default(3) // per specs.md §6, app-level default, editable here
+  notifyEmail        Boolean @default(true) // email me about unread chat messages (specs.md §15.2)
+}
+
+// ── Chat (specs.md §15 / architecture.md §14) ─────────────────────────────
+// 1:1 direct messaging. RLS (SELECT-only) is enabled on Conversation,
+// ConversationParticipant, and Message in the migration so Supabase Realtime
+// can stream them to the browser; all writes go through server actions on the
+// service role, which bypasses RLS.
+
+model Conversation {
+  id            String                    @id @default(cuid())
+  pairKey       String                    @unique // sorted "userA:userB", dedupes 1:1 threads
+  createdAt     DateTime                  @default(now())
+  lastMessageAt DateTime                  @default(now()) // denormalized for inbox sort
+  participants  ConversationParticipant[]
+  messages      Message[]
+
+  @@index([lastMessageAt])
+}
+
+model ConversationParticipant {
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+  lastReadAt      DateTime     @default(now())
+  lastChatEmailAt DateTime? // last unread-nudge email sent to this participant
+
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  body           String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Block {
+  blockerId String
+  blocker   User     @relation("BlocksMade", fields: [blockerId], references: [id])
+  blockedId String
+  blocked   User     @relation("BlocksReceived", fields: [blockedId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
 }

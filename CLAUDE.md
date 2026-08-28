@@ -14,7 +14,9 @@ Next.js (App Router, TypeScript) on Vercel. Single Supabase project for Postgres
 - All dog profiles are visible to everyone by default — no visibility/privacy setting in v1.
 
 ## Out of scope (v1) — do not build
-Messaging, Notifications/activity feed, native mobile apps, payments, admin dashboard, GPS auto check-in, user-submitted parks, busy-time chart, profile visibility control.
+Notifications/activity feed, native mobile apps, payments, admin dashboard, GPS auto check-in, user-submitted parks, busy-time chart, profile visibility control.
+
+**1:1 chat** was v1 out-of-scope, now planned as **v1.2** — see `specs.md` §15 and `architecture.md` §14. Still not built; don't start it unless the task asks for chat. Note it introduces the project's first Postgres RLS (chat tables only) and its first email dependency (Resend).
 
 ## Before implementing
 Check `specs.md` §11 and `architecture.md` §11 for open items before making a new design decision. Update those files if a decision changes.
