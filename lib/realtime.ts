@@ -17,6 +17,17 @@ export type IncomingMessage = {
   createdAt: string;
 };
 
+/** Per-instance suffix so two subscribers to the same logical topic never
+ *  collide on Supabase's channel-name cache (adding `.on()` handlers to an
+ *  already-`subscribe()`d channel throws). */
+function uniqueSuffix(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
 export function subscribeToConversationMessages(
   conversationId: string,
   onInsert: (message: IncomingMessage) => void
@@ -33,7 +44,7 @@ export function subscribeToConversationMessages(
   });
 
   const channel = supabase
-    .channel(`conversation:${conversationId}`)
+    .channel(`conversation:${conversationId}:${uniqueSuffix()}`)
     .on(
       "postgres_changes",
       {
@@ -81,7 +92,7 @@ export function subscribeToInboxActivity(
   });
 
   const channel = supabase
-    .channel(`inbox:${userId}`)
+    .channel(`inbox:${userId}:${uniqueSuffix()}`)
     .on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "Message" },
