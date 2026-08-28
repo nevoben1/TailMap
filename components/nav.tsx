@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { signOut } from "@/lib/actions/auth";
+
 const LINKS = [
   { href: "/map", label: "Map" },
   { href: "/dogs", label: "My Dogs" },
@@ -13,7 +15,7 @@ export function Nav({ avatarInitial }: { avatarInitial: string }) {
   const pathname = usePathname();
 
   return (
-    <nav className="nav">
+    <nav className="nav flex-none">
       <span className="nav-brand">Tailmap</span>
       {LINKS.map((link) => (
         <Link
@@ -37,6 +39,22 @@ export function Nav({ avatarInitial }: { avatarInitial: string }) {
       >
         {avatarInitial}
       </div>
+      <form action={signOut}>
+        <button
+          type="submit"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "inherit",
+            fontSize: 14,
+            padding: 0,
+            fontFamily: "inherit",
+          }}
+        >
+          Log out
+        </button>
+      </form>
     </nav>
   );
 }

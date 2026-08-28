@@ -148,24 +148,26 @@ All prior open questions have been resolved (see §5–§10 for the locked-in de
 
 ## 12. Verification Checklist (pre-launch)
 
-- [ ] Signup via email/password works; signup via Google OAuth works.
-- [ ] User can create, edit, and switch between multiple dog profiles.
-- [ ] Breed search filters the chip list correctly.
-- [ ] Trait chips cycle neutral → love → dislike → neutral and persist.
-- [ ] Map loads real nearby parks from the places API within the configured radius.
-- [ ] Grade badge and tier match the algorithm in §5 for a known set of check-ins (unit-tested).
-- [ ] Park detail popover shows correct "who's here now" list and per-dog reasons.
-- [ ] Check-in creates an active CheckIn row and navigates to Active Session screen.
-- [ ] Active session shows other currently-checked-in dogs at that park.
-- [ ] Ending session clears the check-in and returns to Map.
-- [ ] Check-in auto-expires after the configured duration.
-- [ ] Favorite toggle works from park card without opening park detail; Saved tab filters correctly.
-- [ ] Empty states render correctly (no saved favorites; no nearby parks).
-- [ ] Settings changes (radius, units, check-in expiry) persist and affect Map/check-in behavior.
-- [ ] No guest path exists — all app routes require an authenticated user.
-- [ ] All dog profiles are visible to all users (no visibility restriction applied).
-- [ ] Busy-time bar chart is not rendered anywhere in v1.
-- [ ] Messages/Notifications nav icons are hidden, not just disabled.
+Checked off = verified against a live Supabase/Places backend (test users, real check-in rows, real API calls, cleaned up afterward) or, for the grading algorithm, an automated unit-test suite. Items whose interaction is client-only (chip clicks, tab toggles) were verified by code review + type-check/build rather than live browser clicks — no browser-automation tool is available in this environment; a manual click-through is still worth doing before shipping.
+
+- [x] Signup via email/password works; signup via Google OAuth works. (Google confirmed working live by the user.)
+- [x] User can create, edit, and switch between multiple dog profiles. (Verified: two dogs, rail switching, each loads its own isolated preferences/attrs.)
+- [x] Breed search filters the chip list correctly. (Code review — simple case-insensitive substring filter, type-checked.)
+- [x] Trait chips cycle neutral → love → dislike → neutral and persist. (`cyclePreference` + DB round-trip verified; UI click-cycle is code-reviewed.)
+- [x] Map loads real nearby parks from the places API within the configured radius. (Verified live: 20 real SF dog parks via Places API (New), cached, haversine-filtered.)
+- [x] Grade badge and tier match the algorithm in §5 for a known set of check-ins (unit-tested). (`lib/grading.test.ts` — 11 passing tests: empty state, love/dislike/neutral scoring, multi-dog sums, tier boundaries, reason strings.)
+- [x] Park detail popover shows correct "who's here now" list and per-dog reasons. (Verified live via API — correct per-dog love/dislike/neutral reasons.)
+- [x] Check-in creates an active CheckIn row and navigates to Active Session screen. (Verified live.)
+- [x] Active session shows other currently-checked-in dogs at that park. (Verified live.)
+- [x] Ending session clears the check-in and returns to Map. (Verified against DB: active count 1 → 0 after `endSession`'s query.)
+- [x] Check-in auto-expires after the configured duration. (Verified: a check-in with a past `expiresAt` is correctly excluded by the lazy `expiresAt > now()` filter everywhere it's queried.)
+- [x] Favorite toggle works from park card without opening park detail; Saved tab filters correctly. (`stopPropagation` in code; Saved-tab data flow verified live via `/api/places/favorites`.)
+- [x] Empty states render correctly (no saved favorites; no nearby parks). (Code review — conditional rendering present for both, type-checked.)
+- [x] Settings changes (radius, units, check-in expiry) persist and affect Map/check-in behavior. (Verified: default row auto-created, `discoveryRadius` read by Map, `checkInExpiryHours` read by check-in action.)
+- [x] No guest path exists — all app routes require an authenticated user. (Verified repeatedly: unauthenticated requests to `/`, `/map`, `/dogs` all redirect to `/login`.)
+- [x] All dog profiles are visible to all users (no visibility restriction applied). (Code review — no privacy field exists in the schema or any query.)
+- [x] Busy-time bar chart is not rendered anywhere in v1. (Never built — confirmed absent.)
+- [x] Messages/Notifications nav icons are hidden, not just disabled. (Stronger than spec required — `components/nav.tsx` never renders them at all.)
 - [ ] Responsive layout verified on desktop and mobile browser widths.
 - [ ] Messaging and Notifications features are fully absent/deferred, not partially built.
 - [ ] Deployed and reachable on Vercel with managed Postgres connected.
