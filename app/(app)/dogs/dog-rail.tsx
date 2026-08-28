@@ -1,6 +1,11 @@
+"use client";
+
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 
 import type { Dog } from "@prisma/client";
+
+import { springSnappy } from "@/lib/motion";
 
 export function DogRail({
   dogs,
@@ -9,6 +14,8 @@ export function DogRail({
   dogs: Dog[];
   selectedDogId?: string;
 }) {
+  const reduce = useReducedMotion();
+
   return (
     <aside
       className="flex flex-col"
@@ -27,18 +34,14 @@ export function DogRail({
         Your dogs
       </div>
       {dogs.map((dog) => (
-        <Link
-          key={dog.id}
-          href={`/dogs?dog=${dog.id}`}
-          className="flex items-center gap-2"
-          style={{
-            padding: "9px 13px",
-            borderRadius: 16,
-            background:
-              dog.id === selectedDogId ? "var(--color-surface)" : "transparent",
-            textDecoration: "none",
-          }}
-        >
+        <Link key={dog.id} href={`/dogs?dog=${dog.id}`} className="rail-item">
+          {dog.id === selectedDogId && (
+            <motion.span
+              layoutId="rail-active"
+              className="rail-item__bg"
+              transition={reduce ? { duration: 0 } : springSnappy}
+            />
+          )}
           <div
             className="flex items-center justify-center"
             style={{
