@@ -7,6 +7,7 @@ import { after } from "next/server";
 
 import { directPairKey, getUnreadTotal } from "@/lib/chat";
 import { getOrCreateUser, getSessionUserId } from "@/lib/actions/users";
+import { DEMO_USER_ID } from "@/lib/demo-seed";
 import { sendChatNudgeEmail } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 
@@ -34,6 +35,8 @@ async function maybeNudgeByEmail(
       include: { user: { include: { settings: true } } },
     });
     if (!other?.user?.email) return;
+    // The demo account's address is a placeholder — never try to mail it.
+    if (other.userId === DEMO_USER_ID) return;
 
     const now = Date.now();
     const lastRead = other.lastReadAt.getTime();

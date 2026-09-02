@@ -1,5 +1,6 @@
 import "server-only";
 
+import { directPairKey } from "@/lib/chat";
 import { prisma } from "@/lib/prisma";
 import type { DogAttributes } from "@/lib/dog-attributes";
 
@@ -19,11 +20,13 @@ import type { DogAttributes } from "@/lib/dog-attributes";
  * dogs — the earlier single-global-roster version starved out anyone testing
  * from a different area than whoever tested most recently.
  *
- * To remove before a real launch: delete this file, the DEMO_MODE env var, and
- * the seedDemoLiveness() call in lib/actions/parks.ts.
+ * To remove before a real launch: delete this file, the DEMO_MODE env var, the
+ * seedDemoLiveness() call in lib/actions/parks.ts, the seedDemoConversation()
+ * call in app/(app)/layout.tsx, and the DEMO_USER_ID guard in
+ * lib/actions/chat.ts.
  */
 
-const DEMO_USER_ID = "demo-seed-user";
+export const DEMO_USER_ID = "demo-seed-user";
 
 const DEMO_DOG_TEMPLATES: (DogAttributes & { id: string; name: string })[] = [
   { id: "rex", name: "Rex", Size: "Large", Breed: "Labrador", Color: "Black", Age: "Adult", Energy: "Playful", Gender: "Male" },
@@ -51,9 +54,7 @@ function dogIdFor(templateId: string, region: string): string {
 
 const ensuredRegions = new Set<string>();
 
-async function ensureDemoRosterForRegion(region: string) {
-  if (ensuredRegions.has(region)) return;
-
+async function ensureDemoUser() {
   await prisma.user.upsert({
     where: { id: DEMO_USER_ID },
     update: {},
@@ -64,6 +65,12 @@ async function ensureDemoRosterForRegion(region: string) {
       avatarInitial: "D",
     },
   });
+}
+
+async function ensureDemoRosterForRegion(region: string) {
+  if (ensuredRegions.has(region)) return;
+
+  await ensureDemoUser();
 
   await Promise.all(
     DEMO_DOG_TEMPLATES.map((t) =>
@@ -170,5 +177,62 @@ export async function seedDemoLiveness(
     // Demo seeding is best-effort — never let it break the real nearby-parks response.
     console.error("[demo-seed] failed:", error);
     return false;
+  }
+}
+
+/** Opening messages from the demo owner, oldest first. */
+const DEMO_CHAT_MESSAGES = [
+  "Hey! I'm the owner of Rex and Nala — you'll spot them checked in around the parks near you.",
+  "This thread is a real conversation, not a screenshot: send a reply and it'll deliver and show up live.",
+];
+
+/**
+ * Gives every account one waiting conversation so chat is demonstrably alive
+ * on first sign-in — an empty inbox makes a working feature look unbuilt.
+ *
+ * Same DEMO_MODE gate and same ordinary rows as the check-in seeding above: a
+ * real Conversation with real Message rows, so the inbox, unread badge,
+ * Realtime stream, and reply path all exercise the production code. Runs once
+ * per user — the pairKey lookup short-circuits on every later page view, and a
+ * viewer who deletes nothing never gets a second copy.
+ */
+export async function seedDemoConversation(userId: string): Promise<void> {
+  if (process.env.DEMO_MODE !== "true" || userId === DEMO_USER_ID) return;
+
+  try {
+    const pairKey = directPairKey(userId, DEMO_USER_ID);
+    if (await prisma.conversation.findUnique({ where: { pairKey }, select: { id: true } })) {
+      return;
+    }
+
+    await ensureDemoUser();
+
+    const now = Date.now();
+    // Backdated a few minutes, and the viewer's lastReadAt older still, so the
+    // messages land as unread and the nav badge shows without any faked state.
+    const firstAt = new Date(now - 6 * 60 * 1000);
+
+    await prisma.conversation.create({
+      data: {
+        pairKey,
+        lastMessageAt: new Date(now - 5 * 60 * 1000),
+        participants: {
+          create: [
+            { userId, lastReadAt: new Date(now - 60 * 60 * 1000) },
+            { userId: DEMO_USER_ID },
+          ],
+        },
+        messages: {
+          create: DEMO_CHAT_MESSAGES.map((body, i) => ({
+            senderId: DEMO_USER_ID,
+            body,
+            createdAt: new Date(firstAt.getTime() + i * 60 * 1000),
+          })),
+        },
+      },
+    });
+  } catch (error) {
+    // Losing the pairKey race, or any other failure, must not break page render.
+    console.error("[demo-seed] conversation seeding failed:", error);
   }
 }
