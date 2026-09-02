@@ -485,6 +485,16 @@
 .browse__empty {
   padding: 24px 0;
 }
+/* Location permission CTA — shown wherever coords are missing. */
+.location-gate {
+  gap: 10px;
+  max-width: 420px;
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+.location-gate .btn {
+  align-self: flex-start;
+}
 
 .photo-grid {
   display: grid;

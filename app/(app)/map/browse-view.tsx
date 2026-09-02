@@ -5,8 +5,10 @@ import Link from "next/link";
 
 import { staggerContainer } from "@/lib/motion";
 
+import { LocationGate } from "./location-gate";
 import { ParkPhotoCard } from "./park-photo-card";
 import { SORT_OPTIONS, type DogSummary, type GradedPark, type SortKey } from "./shared";
+import type { GeoStatus } from "./use-geolocation";
 
 function SkeletonGrid() {
   return (
@@ -37,7 +39,9 @@ export function BrowseView({
   onSortChange,
   loading,
   hasCoords,
-  geoError,
+  geoStatus,
+  geoDismissed,
+  onRequestGeo,
   fetchError,
   distanceUnit,
   reduce,
@@ -54,7 +58,9 @@ export function BrowseView({
   onSortChange: (sort: SortKey) => void;
   loading: boolean;
   hasCoords: boolean;
-  geoError: string | null;
+  geoStatus: GeoStatus;
+  geoDismissed: boolean;
+  onRequestGeo: () => void;
   fetchError: string | null;
   distanceUnit: "mi" | "km";
   reduce: boolean;
@@ -62,7 +68,7 @@ export function BrowseView({
   onToggleFavorite: (id: string, e?: React.MouseEvent) => void;
 }) {
   const showEmptyNearby =
-    tab === "nearby" && !geoError && !fetchError && !loading && hasCoords && parks.length === 0;
+    tab === "nearby" && !fetchError && !loading && hasCoords && parks.length === 0;
   const showEmptySaved = tab === "saved" && !loading && parks.length === 0;
 
   return (
@@ -124,7 +130,13 @@ export function BrowseView({
       </header>
 
       <div className="browse__scroll">
-        {geoError && <p className="browse__msg">{geoError}</p>}
+        {tab === "nearby" && (
+          <LocationGate
+            status={geoStatus}
+            dismissed={geoDismissed}
+            onRequest={onRequestGeo}
+          />
+        )}
         {fetchError && <p className="browse__msg">{fetchError}</p>}
 
         {loading && <SkeletonGrid />}

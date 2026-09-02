@@ -12,6 +12,7 @@ import { computeParkGrade, describeCheckedInDogs, type CheckedInDog } from "@/li
 import { fadeRise, reducedFade, springSoft, staggerContainer } from "@/lib/motion";
 
 import { BrowseView } from "./browse-view";
+import { LocationGate } from "./location-gate";
 import { FavoriteHeart, GradePill } from "./park-bits";
 import { ParkDetail } from "./park-detail";
 import {
@@ -24,6 +25,7 @@ import {
   type SortKey,
   type ViewMode,
 } from "./shared";
+import { useGeolocation } from "./use-geolocation";
 import { ViewToggle } from "./view-toggle";
 
 const EASE_OUT: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -105,8 +107,7 @@ export function MapClient({
 }) {
   const reduce = !!useReducedMotion();
   const [selectedDogId, setSelectedDogId] = useState(dogs[0]?.id ?? "");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [geoError, setGeoError] = useState<string | null>(null);
+  const { coords, status: geoStatus, dismissed: geoDismissed, request: requestGeo } = useGeolocation();
   const [tab, setTab] = useState<"nearby" | "saved">("nearby");
   const [parks, setParks] = useState<NearbyPark[]>([]);
   const [savedParks, setSavedParks] = useState<NearbyPark[]>([]);
@@ -175,18 +176,6 @@ export function MapClient({
       /* ignore */
     }
   }, [sort]);
-
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeoError("Geolocation isn't available in this browser.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => setGeoError("Location access was denied. Enable it to see nearby parks."),
-      { timeout: 10000, maximumAge: 5 * 60 * 1000, enableHighAccuracy: false }
-    );
-  }, []);
 
   // No selectedDogId here — switching the viewing dog never needs a re-fetch.
   useEffect(() => {
@@ -331,7 +320,12 @@ export function MapClient({
   const displayedParks = tab === "nearby" ? gradedParks : gradedSavedParks;
   const sortedParks = useMemo(() => sortParks(displayedParks, sort), [displayedParks, sort]);
   const selectedPark = sortedParks.find((p) => p.id === selectedParkId) ?? null;
-  const loading = tab === "nearby" ? loadingParks : loadingSaved;
+  // On the nearby tab the wait starts before the fetch does — permission check
+  // and the fix itself are part of the same "finding parks" spinner.
+  const loading =
+    tab === "nearby"
+      ? loadingParks || geoStatus === "checking" || geoStatus === "locating"
+      : loadingSaved;
 
   const paintMarker = useCallback(
     (marker: google.maps.Marker, park: GradedPark, selected: boolean, dimmed: boolean) => {
@@ -431,7 +425,9 @@ export function MapClient({
           onSortChange={setSort}
           loading={loading}
           hasCoords={!!coords}
-          geoError={geoError}
+          geoStatus={geoStatus}
+          geoDismissed={geoDismissed}
+          onRequestGeo={requestGeo}
           fetchError={fetchError}
           distanceUnit={distanceUnit}
           reduce={reduce}
@@ -479,7 +475,13 @@ export function MapClient({
               {tab === "nearby" ? "Parks near you" : "Saved parks"}
             </div>
 
-            {geoError && <p style={{ fontSize: 13, color: "var(--color-accent-800)" }}>{geoError}</p>}
+            {tab === "nearby" && (
+              <LocationGate
+                status={geoStatus}
+                dismissed={geoDismissed}
+                onRequest={requestGeo}
+              />
+            )}
             {fetchError && <p style={{ fontSize: 13, color: "var(--color-accent-800)" }}>{fetchError}</p>}
             {loading && <SkeletonList />}
             {!loading && tab === "nearby" && sortedParks.length === 0 && !fetchError && coords && (
