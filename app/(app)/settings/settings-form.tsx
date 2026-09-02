@@ -86,18 +86,6 @@ export function SettingsForm({ settings }: { settings: Settings }) {
         </div>
       </div>
 
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Messages</div>
-        <label className="flex items-center gap-2" style={{ fontSize: 13 }}>
-          <input
-            type="checkbox"
-            name="notifyEmail"
-            defaultChecked={settings.notifyEmail}
-          />
-          Email me about unread messages
-        </label>
-      </div>
-
       {state?.error && (
         <p style={{ color: "var(--color-accent-800)", fontSize: 13 }}>{state.error}</p>
       )}
