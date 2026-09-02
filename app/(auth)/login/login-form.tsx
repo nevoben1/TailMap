@@ -35,7 +35,7 @@ export function LoginForm() {
           <label htmlFor="password">Password</label>
           <input id="password" name="password" type="password" required className="input" />
         </div>
-        {state?.error && (
+        {state && "error" in state && (
           <p style={{ color: "var(--color-accent-800)", fontSize: 13 }}>{state.error}</p>
         )}
         <button
