@@ -79,6 +79,27 @@ export function subscribeToConversationMessages(
  * or device). The callback is expected to debounce and then re-query the
  * authoritative count / list from the server rather than track deltas locally.
  */
+/**
+ * Same-tab "I just changed my own unread state" signal.
+ *
+ * subscribeToInboxActivity below also listens for ConversationParticipant
+ * UPDATEs, but that's a server round trip over the socket for something the tab
+ * already knows — and it doesn't land reliably, which left the badge showing a
+ * count for a thread the viewer was reading. This fires locally and
+ * immediately; Realtime stays responsible for other tabs and devices.
+ */
+const UNREAD_CHANGED_EVENT = "tailmap:unread-changed";
+
+export function notifyUnreadChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(UNREAD_CHANGED_EVENT));
+}
+
+export function onUnreadChanged(handler: () => void): () => void {
+  window.addEventListener(UNREAD_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(UNREAD_CHANGED_EVENT, handler);
+}
+
 export function subscribeToInboxActivity(
   userId: string,
   onChange: () => void

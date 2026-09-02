@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { signOut } from "@/lib/actions/auth";
 import { getUnreadTotalAction } from "@/lib/actions/chat";
 import { DURATION, springSnappy } from "@/lib/motion";
-import { subscribeToInboxActivity } from "@/lib/realtime";
+import { onUnreadChanged, subscribeToInboxActivity } from "@/lib/realtime";
 
 type IconLink = { href: string; label: string; icon: React.ReactNode };
 
@@ -159,12 +159,15 @@ export function Nav({
     };
 
     const unsub = subscribeToInboxActivity(meId, debouncedRefresh);
+    // Local signal for reads made in this tab — see notifyUnreadChanged.
+    const unsubLocal = onUnreadChanged(refresh);
     document.addEventListener("visibilitychange", onFocus);
     refresh();
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onFocus);
+      unsubLocal();
       unsub();
     };
   }, [meId]);

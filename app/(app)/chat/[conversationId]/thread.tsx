@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { blockUser, markRead, sendMessage, unblockUser } from "@/lib/actions/chat";
-import { subscribeToConversationMessages } from "@/lib/realtime";
+import { notifyUnreadChanged, subscribeToConversationMessages } from "@/lib/realtime";
 
 type Msg = { id: string; body: string; senderId: string; createdAt: string };
 
@@ -53,9 +53,10 @@ export function Thread({
     });
   }, []);
 
-  // Mark read on mount.
+  // Mark read on mount, then tell the nav badge to re-count — opening a thread
+  // is the moment the count actually drops.
   useEffect(() => {
-    void markRead(conversationId);
+    void markRead(conversationId).then(notifyUnreadChanged);
   }, [conversationId]);
 
   // Realtime subscription (architecture.md §14.3).
@@ -67,7 +68,7 @@ export function Thread({
         senderId: row.senderId,
         createdAt: row.createdAt,
       });
-      if (row.senderId !== me) void markRead(conversationId);
+      if (row.senderId !== me) void markRead(conversationId).then(notifyUnreadChanged);
     });
     return unsub;
   }, [conversationId, me, addMessage]);
