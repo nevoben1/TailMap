@@ -99,7 +99,6 @@ Grades are **derived on every read and never stored**. They depend on who's chec
 - **Places results are cached** in the `Park` table for 24h and never called from the browser — all Google traffic goes through server routes under `app/api/places/`, keeping the key server-side and the bill small.
 - **Check-ins expire lazily.** Queries filter `expiresAt > now()`, so correctness needs no cron. One active check-in per dog.
 - **Chat is RLS-scoped.** The chat tables are the only ones with Postgres row-level security — SELECT-only policies exist so the browser's Realtime socket can stream just the viewer's own conversations. All writes go through server actions on the service role.
-- **Email nudges have no scheduler.** The "you have unread messages" mail is sent inline from `sendMessage` via `after()`, guarded by recency and cooldown checks so an active conversation never generates mail.
 - **The dual browse/map view** shares one data fetch — toggling never refetches parks or re-runs geolocation.
 
 ---
@@ -156,6 +155,3 @@ prisma/schema.prisma   data model
 proxy.ts               auth enforcement for every route
 ```
 
-## Not in this version
-
-Notifications and activity feeds, native apps, payments, an admin dashboard, GPS auto check-in, user-submitted parks, busy-time charts, and per-profile visibility controls are all deliberately out of scope. Dog profiles are visible to every signed-in user.
